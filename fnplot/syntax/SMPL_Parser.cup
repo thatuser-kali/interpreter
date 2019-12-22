@@ -1,0 +1,339 @@
+package smpl.syntax;
+import smpl.semantics.*;
+
+import java_cup.runtime.*;
+import java.io.*;
+import java.util.*;
+
+/* Preliminaries to set up and use the scanner.  */
+parser code {:
+       		// SmplLexer lexer;
+
+		// InputStreamReader in = null;
+
+		// public SmplParser(InputStream is) {
+	        //     in = new InputStreamReader(is);
+		// }
+
+		// public void report_error(String message, Object info) {
+		//    System.err.println(message);
+		// }
+
+		public void syntax_error(Symbol cur_token) {
+		    SmplLexer lexer = (SmplLexer) getScanner();
+		    System.err.print("Char: " + lexer.getChar() +
+		    		     " on line " + lexer.getLine() +
+				     " at column " + lexer.getColumn() + ": ");
+		    report_error("Syntax error", cur_token);
+		    System.err.println("Token extents: (" + cur_token.left + ", " + cur_token.right + ")");
+		    System.err.println ("Last token read is " +
+					 lexer.getText());
+		    System.err.println("Current token: " + cur_token.value);
+		}
+	    :};
+
+/*
+init with {:
+		// Create a lexer that reads from
+		// supplied input stream or standard input
+		if (in == null)
+		   in = new InputStreamReader(System.in);
+		lexer = new SmplLexer(in);
+	  :};
+*/
+/*
+scan with {:
+		try {
+		    return lexer.next_token();
+		} catch (java.io.IOException ioe) {
+		    System.out.println ("Unrecognised token");
+		    System.out.println(ioe.getMessage());
+		    throw ioe;
+		}
+	  :};
+*/
+
+/* Terminals (tokens returned by the scanner). */
+
+// special symbols
+terminal LPAREN, RPAREN, LBRACE, RBRACE, LVECTOR, RVECTOR, LSQUARE, RSQUARE;
+terminal SEMI, COMMA, COLON;
+terminal DEF, ASSIGN;
+terminal PROC, LAZY, NAME, CALL;
+terminal IF, THEN, ELSE, CASE;
+terminal BITAND, BITOR, BITNOT;
+terminal LOGAND, LOGOR, LOGNOT;
+terminal READ, READINT, PRINTLN, PRINT;
+terminal LET, EQUAL;
+terminal LIST;
+terminal FOR, WHILE, REPEAT, DO, TO, UNTIL;
+terminal EMPTY;
+
+// arithmetic operators
+terminal PLUS, MINUS, MUL, DIV, MOD, POW, CONCAT;
+
+// graphical operators (optional)
+
+
+// terminals with values
+terminal Integer INTEGER;
+terminal Double DOUBLE;
+terminal String VARIABLE;
+terminal Boolean BOOLEAN;
+terminal String STRING;
+terminal String CHAR;
+terminal String BINHEX;
+terminal String COMPARE;
+
+/* Non terminals */
+non terminal SmplProgram program;
+non terminal StmtSequence stmtList;
+non terminal Statement stmt;
+non terminal StmtDefinition definition;
+non terminal StmtAssign assign;
+non terminal IRExpStringLit strLit;
+non terminal IRExpCharLit charLit;
+non terminal IRExpRead readExp;
+non terminal IRExpReadInt readIntExp;
+non terminal IRExpPrintLn println;
+non terminal IRExpPrint print;
+non terminal IRExpBinHex binHexExp;
+non terminal ArrayList<String> paramEmpty;
+non terminal ArrayList<String> params;
+non terminal String param;
+non terminal ArrayList<IRExp> expListEmpty;
+non terminal ArrayList<IRExp> expList;
+non terminal IRExpProcedure proc;
+non terminal IRExpIf ifExp;
+non terminal StmtSequence helper;
+non terminal IRExpComparison comp;
+non terminal IRExpLet letExp;
+non terminal ArrayList<StmtDefinition> bindingsEmpty;
+non terminal ArrayList<StmtDefinition> bindings;
+non terminal StmtDefinition binding; 
+non terminal IRExpCase case;
+non terminal ArrayList<CaseHolder> caseLists;
+non terminal ArrayList<CaseHolder> caseList;
+non terminal CaseHolder caseHolder;
+non terminal IRExpCall call;
+non terminal IRExpList list;
+non terminal IRExp spec;
+non terminal ArrayList<IRExp> vectorExps;
+non terminal IRExpVector vector;
+non terminal IRExpConcat concat;
+non terminal IRExpGet get;
+non terminal IRExpFor for;
+non terminal IRExpWhile while;
+non terminal IRExpRepeat repeat;
+
+non terminal IRExp expression;
+non terminal IRExp bitop;
+non terminal IRExp logop;
+non terminal IRExp condition;
+non terminal IRExp arithExp;
+non terminal IRExp term;
+non terminal IRExp power;
+non terminal IRExp factor;
+non terminal IRExp callFactors;
+non terminal empty;
+
+
+precedence nonassoc ELSE;
+
+/* The grammar rules */
+program ::= stmtList:s {: RESULT = new SmplProgram(s); :} | 
+			LBRACE stmtList:s RBRACE{: RESULT = new SmplProgram(s); :};
+
+stmtList ::= stmtList:lst stmt:s{:	lst.add(s); 
+									RESULT = lst; :} |
+	     stmt:s{: RESULT = new StmtSequence(s); :};
+	     
+/* ----- Helpers ----- */
+bindingsEmpty ::= 	bindings:b {: RESULT = b; :} |
+					empty {: RESULT = new ArrayList<StmtDefinition>(); :};
+
+bindings ::= bindings:b COMMA binding:d 
+			{: 	b.add(d);
+				RESULT = b; :}|
+			 binding:d 
+			{:	ArrayList<StmtDefinition> b = new ArrayList<StmtDefinition>();
+				b.add(d);
+				RESULT = b; :} ;
+
+binding ::= VARIABLE:v EQUAL expression:e {: RESULT = new StmtDefinition(v, e); :} ;
+
+paramEmpty ::= 	params:p {: RESULT = p; :} |
+			empty {: RESULT = new ArrayList<>(); :};
+
+params ::= 	params:pI COMMA param:p 
+			{: 	pI.add(p);
+				RESULT = pI; :} |
+			param: p 
+			{: 	ArrayList<String> pI = new ArrayList<>();
+				pI.add(p);
+				RESULT = pI; :};
+				
+param ::= 	VARIABLE:v {: RESULT = v; :} | 
+			LAZY VARIABLE:v {: RESULT = "lazy " + v; :} | 
+			NAME VARIABLE:v {: RESULT = "name " + v; :} ;		
+			
+helper ::= expression:exp {: RESULT = new StmtSequence(new StmtExpr(exp)); :} |
+			 LBRACE stmtList:s RBRACE {: RESULT = s; :} ;
+
+expListEmpty ::=  expList:lst {: RESULT = lst; :} |
+	     		  empty {: RESULT = new ArrayList<IRExp>(); :};
+
+expList ::=	expList:lst COMMA expression:e 
+			{:	lst.add(e);
+ 		    	RESULT = lst; :} |
+	    	expression:e 
+	    	{:	ArrayList<IRExp> lst = new ArrayList<>();
+		 		lst.add(e);
+		 		RESULT = lst; :} ;
+		 		
+caseLists ::= caseList:cl COMMA ELSE COLON expression:exp {: 
+			  cl.add(new CaseHolder(exp)); 
+			  RESULT = cl; :};
+		 		
+caseList ::= caseList:cl COMMA caseHolder:ch {:
+              cl.add(ch);
+              RESULT = cl;
+            :} |
+            caseHolder:ch {:
+              ArrayList<CaseHolder> cl = new ArrayList<>();
+             cl.add(ch);
+             RESULT = cl;
+            :} |
+            empty {:
+              RESULT = new ArrayList<>();
+            :}; 
+
+caseHolder ::= condition:cond COLON expression:body {: RESULT = new CaseHolder(cond, body); :};
+
+spec ::= expression:exp1 COLON expression:exp2 {: RESULT = new IRExpSpecification(exp1, exp2); :} | 
+		 expression:exp {: RESULT = exp; :} ;
+		 
+vectorExps ::= vectorExps:exps COMMA spec:s 
+			{: 	exps.add(s);
+				RESULT = exps; :} |
+			 spec:s
+			{:	ArrayList<IRExp> exps = new ArrayList<IRExp>();
+				exps.add(s);
+				RESULT = exps; :} ;
+		 		
+/* ----- Statements ----- */
+			
+stmt ::= 	definition:d SEMI{: RESULT = d; :} |
+			assign:a SEMI{: RESULT = a; :} |
+	 		expression:e SEMI{: RESULT = new StmtExpr(e); :};
+
+definition ::= DEF VARIABLE:v expression:e {: RESULT = new StmtDefinition(v, e); :} ;
+
+assign ::= VARIABLE:v ASSIGN expression:e {: RESULT = new StmtAssign(v, e); :} |
+		   VARIABLE:v LSQUARE arithExp:a RSQUARE ASSIGN expression:e {: RESULT = new StmtAssign(v, a, e); :} ; 
+			
+/* ----- Expressions ----- */	
+
+strLit ::= STRING:str{: RESULT = new IRExpStringLit(str); :};
+
+charLit ::= CHAR:chi {: RESULT = new IRExpCharLit(chi); :};
+
+binHexExp ::= BINHEX:bh {: RESULT = new IRExpBinHex(bh); :} ;
+
+readExp ::= READ LPAREN RPAREN {: RESULT = new IRExpRead(); :} ;
+
+readIntExp ::= READINT LPAREN RPAREN {: RESULT = new IRExpReadInt(); :} ;
+
+print ::= PRINT LPAREN expression:exp RPAREN {: RESULT = new IRExpPrint(exp); :} ;
+
+println ::= PRINTLN LPAREN expression:exp RPAREN {: RESULT = new IRExpPrintLn(exp); :} ;
+
+bitop ::= 	arithExp:b BITAND arithExp:a {: RESULT = new IRExpBitAnd(b,a); :} |
+			arithExp:b BITOR arithExp:a {: RESULT = new IRExpBitOr(b,a); :} |
+			BITNOT arithExp:a {: RESULT = new IRExpBitNot(a); :};
+			
+ifExp ::= 	IF expression:e THEN helper:s ELSE helper:s2 {: RESULT = new IRExpIf(e, s, s2); :} | 
+			IF expression:e THEN helper:s {: RESULT = new IRExpIf(e, s); :} ;
+			 
+logop ::= 	comp:c1 LOGAND comp:c2 {: RESULT = new IRExpLogAnd(c1, c2); :} |
+			comp:c1 LOGOR comp:c2 {: RESULT = new IRExpLogOr(c1, c2); :} |
+			LOGNOT comp:c1 {: RESULT = new IRExpLogNot(c1); :};
+
+comp ::= arithExp:exp1 COMPARE:sign arithExp:exp2 {: RESULT = new IRExpComparison(sign, exp1, exp2); :} | 
+		 arithExp:exp1 EQUAL arithExp:exp2 {: RESULT = new IRExpComparison("=", exp1, exp2); :} ;
+				
+letExp ::= LET LPAREN bindingsEmpty:b RPAREN helper:body {: RESULT = new IRExpLet(b, body); :} ;
+
+call ::= CALL LPAREN VARIABLE:v COMMA expression:exp RPAREN
+        {: RESULT = new IRExpCall(v, exp); :} ;
+
+case ::= CASE LBRACE caseLists:cl RBRACE {: RESULT = new IRExpCase(cl); :};
+
+proc ::= PROC LPAREN paramEmpty:p RPAREN helper:body {: RESULT = new IRExpProcedure(p, body); :} ;
+				
+list ::= LIST LPAREN expListEmpty:e RPAREN {: RESULT = new IRExpList(e); :} | 
+		 LSQUARE expListEmpty:e RSQUARE {: RESULT = new IRExpList(e); :} ;
+				
+vector ::= LVECTOR vectorExps:exps RVECTOR {: RESULT = new IRExpVector(exps); :} ;
+
+get ::= VARIABLE:v LSQUARE arithExp:a RSQUARE {: RESULT = new IRExpGet(v, a); :} ;
+
+for ::= FOR VARIABLE:v EQUAL expression:exp1 TO expression:exp2 DO helper:body {: RESULT = new IRExpFor(v, exp1, exp2, body); :} ;
+		
+while ::= WHILE comp:c DO helper:body {: RESULT = new IRExpWhile(c, body); :} ; 
+
+repeat ::= REPEAT helper:body UNTIL comp:c {: RESULT = new IRExpRepeat(c, body); :} ; 
+
+expression ::=  arithExp:e {: RESULT = e; :} |
+				bitop:b {: RESULT = b; :} | 
+				binHexExp:e {: RESULT = e; :} |
+				readExp:e {: RESULT = e; :} |
+        		readIntExp:e {: RESULT = e; :} |
+        		print:p {: RESULT = p; :} | 
+        		println:p {: RESULT = p; :} |
+        		proc:p {: RESULT = p; :} |
+        		ifExp:i {: RESULT = i; :} |
+        		condition:c {: RESULT = c; :} |
+        		letExp:l {: RESULT = l; :} |
+        		case:c {: RESULT = c; :} |
+        		list:l {: RESULT = l; :} |
+				vector:v {: RESULT = v; :} |
+				concat:c {: RESULT = c; :} |
+				for:f {: RESULT = f; :} |
+				while:w {: RESULT = w; :} | 
+				repeat:r {: RESULT = r; :} ;
+        		
+condition ::= 	comp:c {: RESULT = c; :} | 
+			  	logop:l {: RESULT = l; :} | 
+			  	BOOLEAN:b {: RESULT = new IRExpBool(b); :} ;
+			  	
+concat ::= VARIABLE:v1 CONCAT VARIABLE:v2 {: RESULT = new IRExpConcat(v1, v2); :} ;
+		
+arithExp ::= 	arithExp:e PLUS term:t {: RESULT = new IRExpAdd(e, t); :} |
+				arithExp:e MINUS term:t {: RESULT = new IRExpSub(e, t); :} |
+				term:t {: RESULT = t; :} |
+				get:g {: RESULT = g; :} |
+				EMPTY {: RESULT = new IRExpList(); :} |
+				strLit:s {: RESULT = s; :} | 
+				charLit:c {: RESULT = c; :} ;
+
+term ::= 	term:t MUL factor:f {: RESULT = new IRExpMul(t, f); :} |
+	 		term:t DIV factor:f {: RESULT = new IRExpDiv(t, f); :} |
+	 		term:t MOD factor:f {: RESULT = new IRExpMod(t, f); :} |
+	 		power:p {: RESULT = p; :};
+
+power ::= factor:f POW power:p {: RESULT = new IRExpExpt(f,p); :} | 
+		  factor:f {: RESULT = f; :};
+
+factor ::= 	VARIABLE:var {: RESULT = new IRExpVar(var); :} |                                        
+			INTEGER:ilit {: RESULT = new IRExpLit(ilit); :} |
+			DOUBLE:doub {: RESULT = new IRExpDouble(doub); :} | 
+			LPAREN expression:e RPAREN {: RESULT = e; :} |
+			callFactors:c {: RESULT = c; :} ;
+			
+callFactors ::= factor:f LPAREN expListEmpty:lst RPAREN{: RESULT = new IRExpProcedure(f,lst); :} |
+				call:c {: RESULT = c; :} ;
+
+empty ::= ;
+       
+ 
